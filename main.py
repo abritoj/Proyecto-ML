@@ -9,7 +9,7 @@ app = FastAPI()
 
 
 movies = pd.read_csv('movies_dataset_limpio.csv')
-
+movies['release_date'] = pd.to_datetime(movies['release_date'])
 
 @app.get('/peliculas_mes/{mes}')
 def peliculas_mes(mes:str):
@@ -28,7 +28,7 @@ def peliculas_mes(mes:str):
     count = len(filtro['title'].count())
     # Devuelve el resultado en el formato especificado
 
-    return {'mes':mes, 'cantidad':count}
+    return {'mes':mes, 'cantidad':str(count)}
 
 @app.get('/peliculas_dis/{dis}')
 def peliculas_dia(dia:str):
@@ -45,7 +45,7 @@ def peliculas_dia(dia:str):
     count = len(filtro['title'].count())
     # Devuelve el resultado en el formato especificado
 
-    return {'dia':dia, 'cantidad':count}
+    return {'dia':dia, 'cantidad':str(count)}
 
 @app.get('/franquicia/{franquicia}')
 def franquicia(franquicia:str):
