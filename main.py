@@ -25,7 +25,7 @@ def peliculas_mes(mes:str):
     # Filtra el DataFrame por el mes especificado
     filtro = movies[movies['release_date'].dt.month == mes_numero]
     # Cuenta el número de películas
-    count = filtro['title'].count()
+    count = len(filtro['title'].count())
     # Devuelve el resultado en el formato especificado
 
     return {'mes':mes, 'cantidad':count}
@@ -42,7 +42,7 @@ def peliculas_dia(dia:str):
     # Filtra el DataFrame por el día especificado
     filtro = movies[movies['dia_semana'] == dia_index]
     # Cuenta el número total de películas
-    count = filtro['title'].count()
+    count = len(filtro['title'].count())
     # Devuelve el resultado en el formato especificado
 
     return {'dia':dia, 'cantidad':count}
