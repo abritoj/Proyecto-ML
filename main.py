@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.neighbors import NearestNeighbors
 
 
 app = FastAPI()
 
 
-movies = pd.read_csv('movies_dataset_limpio.csv')
+movies=pd.read_csv('df_definitivo.csv')
 movies['release_date'] = pd.to_datetime(movies['release_date'])
 
 @app.get('/peliculas_mes/{mes}')
@@ -27,13 +27,12 @@ def peliculas_mes(mes:str):
     # Cuenta el número de películas
     count = filtro['title'].count()
     # Devuelve el resultado en el formato especificado
-
     return {'mes':mes, 'cantidad':str(count)}
 
 @app.get('/peliculas_dis/{dis}')
 def peliculas_dia(dia:str):
     '''Se ingresa el dia y la funcion retorna la cantidad de peliculas que se estrebaron ese dia historicamente'''
-    # Crea una lista con los días de la semana en español
+   # Crea una lista con los días de la semana en español
     dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
     # Encuentra el índice del día especificado en la lista de días
     dia_index = dias.index(dia.lower())
@@ -63,30 +62,34 @@ def franquicia(franquicia:str):
               'cantidad': cantidad,
               'ganancia_total': ganancia_total,
               'ganancia_promedio': ganancia_promedio}
-    return {'franquicia':franquicia, 'cantidad':cantidad, 'ganancia_total':ganancia_total, 'ganancia_promedio':ganancia_promedio}
-
+    return str(result)
 @app.get('/peliculas_pais/{pais}')
 def peliculas_pais(pais:str):
-    '''Ingresas el pais, retornando la cantidad de peliculas producidas en el mismo'''
-    cantidad = sum(movies['production_countries'].apply(lambda x: pais in x))
+    # Contar la frecuencia de los valores en la columna 'name_countrie'
+    paises = movies['name_countrie'].value_counts()
+    
+    # Obtener la cantidad de películas producidas en el país especificado
+    respuesta = paises.get(pais, 0)
+    
+    # Devolver el resultado
+    return {'pais': pais, 'cantidad':str(respuesta)}
 
-
-    return {'pais':pais, 'cantidad':cantidad}
+    
 
 @app.get('/productoras/{productora}')
 def productoras(productora:str):
-    '''Ingresas la productora, retornando la ganancia toal y la cantidad de peliculas que produjeron'''
-     # Filtra el DataFrame por la productora especificada
-    filtro = movies[movies['production_companies'].apply(lambda x: productora in x)]
-    # Cuenta el número de películas
-    cantidad = filtro['title'].count()
-    # Calcula la ganancia total
-    ganancia_total = filtro['revenue'].sum()
-    # Devuelve el resultado en el formato especificado
-    result = {'productora': productora,
-              'cantidad': cantidad,
-              'ganancia_total': ganancia_total}
-    return {'productora':productora, 'ganancia_total':ganancia_total, 'cantidad':cantidad}
+    # Agrupar los datos por la columna 'production_companies'
+    grupos = movies.groupby('production_companies')
+    
+    # Obtener el grupo correspondiente a la productora especificada
+    grupo = grupos.get_group(productora)
+    
+    # Calcular la ganancia total y la cantidad de películas producidas por la productora
+    ganancia_total = grupo['revenue'].sum()
+    cantidad = len(grupo)
+    
+    # Devolver el resultado
+    return {'productora': productora, 'ganancia_total': str(ganancia_total), 'cantidad': str(cantidad)}
 
 @app.get('/retorno/{pelicula}')
 def retorno(pelicula:str):
@@ -99,29 +102,33 @@ def retorno(pelicula:str):
     return {'pelicula':pelicula, 'inversion':inversion, 'ganancia':ganancia,'retorno':retorno, 'anio':anio}
 
 # ML
-genres = movies['genres']
-mlb = MultiLabelBinarizer()
-genres_encoded = mlb.fit_transform(genres)
-
-production_companies = movies['production_companies']
-mlb = MultiLabelBinarizer()
-production_companies_encoded = mlb.fit_transform(production_companies)
-
-# Luego,  concatenar las matrices para obtener una matriz de características para cada película
-features = np.concatenate([genres_encoded, production_companies_encoded], axis=1)
-
-# Luego, calcular la similitud entre todas las películas utilizando la distancia del coseno
-similarity_matrix = cosine_similarity(features)
 @app.get('/recomendacion/{titulo}')
-def recomendacion(title:str):
-    '''Ingresas un nombre de pelicula y te recomienda las similares en una lista'''
-      # Obtenemos el índice de la película en el dataframe
-    idx = movies[movies['title'] == title].index[0]
-    # Obtenemos las similitudes con todas las demás películas
-    similarities = similarity_matrix[idx]
-    # Ordenamos las películas por similitud y seleccionamos las 5 más similares
-    similar_movies_idx = np.argsort(similarities)[::-1][1:6]
-    similar_movies = movies.iloc[similar_movies_idx]['title']
-    return similar_movies.tolist()
+def recomendacion(titulo:str):
+    # Eliminar los valores NaN de las columnas 'title' y 'genres'
+    df = movies.dropna(subset=['title', 'genres'])
+    
+    # Crear un vectorizador TF-IDF para extraer características de los datos textuales
+    tfidf = TfidfVectorizer(stop_words='english')
+    
+    # Representar cada película como un vector numérico
+    matriz_tfidf = tfidf.fit_transform(df['title'] + ' ' + df['genres'].apply(lambda x: ' '.join(x) if isinstance(x, list) else ''))
+    
+    # Crear un modelo de vecinos más cercanos
+    modelo_knn = NearestNeighbors(metric='cosine', algorithm='brute')
+    
+    # Entrenar el modelo con los datos del DataFrame
+    modelo_knn.fit(matriz_tfidf)
+    
+    # Buscar la película especificada en el DataFrame
+    pelicula = df[df['title'] == titulo].index[0]
+    
+    # Encontrar las 6 películas más similares a la película especificada
+    distancias, indices = modelo_knn.kneighbors(matriz_tfidf[pelicula], n_neighbors=6)
+    
+    # Seleccionar las 5 películas más similares (excluyendo la película especificada)
+    recomendadas = df.iloc[indices[0][1:]]['title'].tolist()
+    
+    # Devolver el resultado
+    return {'lista recomendada': recomendadas}
 
     
